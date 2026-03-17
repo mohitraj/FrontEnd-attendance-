@@ -263,11 +263,30 @@ def process_attendance(input_stream):
             lecture_start_col = 7 if section in ['C', 'D', 'F', 'G', 'H'] else 8
             lab_start_col = 7 if section in ['C', 'D', 'F', 'G', 'H'] else 8
 
+            def has_attendance_data(sheet, col_idx):
+                """
+                Returns True only if the column contains at least one 'P' or 'A'
+                (case-insensitive) in the student data rows (row 5 onwards).
+                Columns with a date header but all-empty / all-zero data rows
+                are treated as not yet taken and will be skipped.
+                """
+                for row_idx in range(5, sheet.max_row + 1):
+                    val = sheet.cell(row_idx, col_idx).value
+                    if isinstance(val, str) and val.strip().upper() in ('P', 'A'):
+                        return True
+                return False
+
             def extract_columns(sheet, start_col, source_type):
                 columns = []
                 for col_idx in range(start_col, sheet.max_column + 1):
                     date_cell = sheet.cell(1, col_idx).value
                     if isinstance(date_cell, datetime):
+                        # ── KEY FIX ──────────────────────────────────────────────
+                        # Skip columns that have a date header but no actual P/A
+                        # attendance data — these are future/unfilled sessions.
+                        if not has_attendance_data(sheet, col_idx):
+                            continue
+                        # ─────────────────────────────────────────────────────────
                         day_cell = sheet.cell(2, col_idx).value
                         if isinstance(day_cell, str) and day_cell.startswith('='):
                             day_cell = date_cell.strftime('%A')
@@ -358,6 +377,10 @@ def process_attendance(input_stream):
                         attendance_val = lecture_sheet.cell(student['lecture_row'], col_idx).value
                     elif source == 'lab' and student['lab_row']:
                         attendance_val = lab_sheet.cell(student['lab_row'], col_idx).value
+
+                    # Normalize to uppercase to handle 'p'/'a' entries
+                    if isinstance(attendance_val, str):
+                        attendance_val = attendance_val.strip().upper()
 
                     cell = new_sheet.cell(row_num, col_num)
                     if attendance_val == 'P':
